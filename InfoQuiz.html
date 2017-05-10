@@ -1,0 +1,124 @@
+<!-- This is the corresponding "starter code" for 07_Markers/Infowindows in Udacity and Google's Maps
+API Course, Lesson 1 -->
+<html>
+ <head>
+ <!-- styles put here, but you can include a CSS file and reference it instead! -->
+   <style type="text/css">
+     html, body { height: 100%; margin: 0; padding: 0; }
+     #map { height: 100%; }
+   </style>
+ </head>
+ <body>
+   <div id="map"></div>
+   <script type="text/javascript">
+     // Create a map variable
+     var map;
+     // Function to initialize the map within the map div
+     function initMap() {
+       //Create a styles array to use with the map.
+       var styles = [
+	{
+	  featureType: 'water',
+	  stylers: [
+	    { colors: '#19a0d8' }
+	  ]
+	 },{
+	  featureType: 'administrative',
+	  elementType: 'labels.text.stroke',
+	  stylers: [
+	    { color: '#ffffff' },
+	    { weight: 6 }
+	  ]
+	 },{
+	  featureType: 'administrative',
+	  elementType: 'labels.text.fill',
+	  stylers: [
+	    { color: '#e85113' },
+	  ]
+	 },{
+	  featureType: 'road.highway',
+	  elementType: 'geometry.stroke',
+	  stylers: [
+	    { color: '#efe9e4' },
+	    { lightness: -40 }
+	  ]
+	 },{
+	  featureType: 'transit.station',
+	  stylers: [
+	    { weight: 9 },
+	    { hue: '#e85113' },
+	  ]
+	 },{
+	  featureType: 'road.highway',
+	  elementType: 'labels.icon',
+	  stylers: [
+	    { visibility: 'off' },
+	  ]
+	 },{
+	  featureType: 'road.highway',
+	  elementType: 'geometry.fill',
+	  stylers: [
+	    { color: '#efe9e4' },
+	    { lightness: -25 }
+	  ]
+	 }
+	];
+	
+       map = new google.maps.Map(document.getElementById('map'), {
+         center: {lat: 40.74135, lng: -73.99802},
+         zoom: 13,
+         styles: styles,
+         mapTypeControl: false
+	});
+    
+       // Create a single latLng literal object.
+       var singleLatLng = {lat: 40.74135, lng: -73.99802};
+       var marker;
+       var defaultIcon = makeMarkerIcon('0091ff');
+       var highlightedIcon = makeMarkerIcon('FFFF24');
+       // TODO: Create a single marker appearing on initialize -
+       // Create it with the position of the singleLatLng,
+       // on the map, and give it your own title!
+       marker = new google.maps.Marker({
+	  position: singleLatLng,
+	  map: map,
+	  title: 'Start Point',
+	  icon: defaultIcon
+	});
+       // Style the marker
+ 
+       
+       // TODO: create a single infowindow, with your own content.
+       // It must appear on the marker
+       var infowindow = new google.maps.InfoWindow({
+	  content: 'Start Here' + ' lat: 40.74135, lng: -73.99802'
+	});
+       // TODO: create an EVENT LISTENER so that the infowindow opens when
+       // the marker is clicked!
+       marker.addListener('click', function() {
+	infowindow.open(map, marker);
+       });
+       marker.addListener('mouseover', function() {
+	this.setIcon(highlightedIcon);
+       });
+       marker.addListener('mouseout', function() {
+	this.setIcon(defaultIcon);
+       });
+       function makeMarkerIcon(markerColor) {
+       var markerImage = new google.maps.MarkerImage(
+	  'http://chart.googleapis.com/chart?chst=d_map_spin&chld=1.15|0|' + markerColor +
+	  '|40|_|%E2%80%A2',
+	  new google.maps.Size(21, 34),
+	  new google.maps.Point(0, 0),
+	  new google.maps.Point(10, 34),
+	  new google.maps.Size(21, 34));
+	return markerImage;
+       }
+      }
+   </script>
+   <!--TODO: Insert your API Key in the below call to load the API.-->
+   <script async defer
+     src="https://maps.googleapis.com/maps/api/js?v=3&key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&callback=initMap">
+   </script>
+ </body>
+</html>

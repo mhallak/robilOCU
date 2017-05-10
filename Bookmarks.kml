@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>Bookmarks</name>
+	<Style id="myplaces_placemark_style">
+		<IconStyle>
+			<Icon>
+				<href>https://earth.google.com/clientassets/pin_myplaces_selected_128px.png</href>
+			</Icon>
+			<hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/>
+		</IconStyle>
+		<BalloonStyle>
+			<gx:displayMode>card</gx:displayMode>
+		</BalloonStyle>
+	</Style>
+	<Placemark>
+		<name>IAI</name>
+		<gx:mid>/g/11bw1_0cx6</gx:mid>
+		<LookAt>
+			<longitude>34.9103223</longitude>
+			<latitude>32.009257</latitude>
+			<altitude>0</altitude>
+			<heading>0</heading>
+			<tilt>45</tilt>
+			<gx:fovy>35</gx:fovy>
+			<range>879.5787360781472</range>
+			<altitudeMode>relativeToGround</altitudeMode>
+		</LookAt>
+		<styleUrl>#myplaces_placemark_style</styleUrl>
+		<Point>
+			<altitudeMode>relativeToGround</altitudeMode>
+			<coordinates>34.9103223,32.009257,0</coordinates>
+		</Point>
+	</Placemark>
+</Document>
+</kml>
