@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>RobilOCU</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #map {
+        height: 100%;
+      }
+      /* Optional: Makes the sample page fill the window. */
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #toggle-drawing {
+        width: 27%;
+        position: relative;
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      // This example requires the Drawing library. Include the libraries=drawing
+      // parameter when you first load the API. For example:
+      // <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=drawing">
+      var polyline=null;
+      var map;
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 32.009257, lng: 34.9103223},
+          zoom: 16,
+          mapTypeId: 'satellite'
+        });
+
+        var robil= {lat: 32.009257, lng: 34.9103223};
+        var marker = new google.maps.Marker({
+	  position: robil,
+	  map: map,
+	  title: 'Start Point'
+	});
+	var infowindow = new google.maps.InfoWindow({
+	  content: 'Start Here' + ' lat: 32.009257, lng: 34.9103223'
+	});
+	//marker.addListener('click', function() {
+	  infowindow.open(map, marker);
+	//});
+	
+        var drawingManager = new google.maps.drawing.DrawingManager({
+          drawingMode: google.maps.drawing.OverlayType.POLYLINE,
+          drawingControl: true,
+          drawingControlOptions: {
+            position: google.maps.ControlPosition.TOP_CENTER,
+            drawingModes: [google.maps.drawing.OverlayType.POLYLINE]
+	  }
+        });
+        
+        drawingManager.addListener('overlaycomplete', function(event) {
+	  // First, check if there is an existing polyline.
+	  // If there is, get rid of it and remove the markers
+          if (polyline) {
+	      polyline.setMap(null);
+	  }
+          // Switching the drawing mode to the HAND (i.e., no longer drawing).
+          drawingManager.setDrawingMode(null);
+          // Creating a new editable polyline from the overlay.
+          polyline = event.overlay;
+          polyline.setEditable(true);
+          // Searching within the polyline.
+          displayCoordinates();          
+          // Make sure the path is recomputed if the poly is changed.
+          polyline.getPath().addListener('set_at', displayCoordinates);
+          polyline.getPath().addListener('insert_at', displayCoordinates);
+          });
+          
+        drawingManager.setMap(map);
+      }
+      
+      function displayCoordinates() {
+        var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var dString = latLngArray.getArray().toString(); //google.maps.geometry.encoding.encodePath(latLngArray);
+   //     for (i=0; i<latLngArray.length; i++){
+//	  dString=dString+" "+latLngArray[i].toString() + ",";
+          window.alert("The coordinates of the polyline are "+dString);
+ //         window.alert("The size of the polyline is "+size);
+
+   //     }
+      }
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
+         async defer></script>
+  </body>
+</html>
