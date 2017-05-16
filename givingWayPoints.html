@@ -41,12 +41,14 @@
     </div>
     <script src="http://cdn.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
     <script src="/home/michele/roslibjs/build/roslib.js"></script>
+
     <script>
       // This example requires the Drawing library. Include the libraries=drawing
       // parameter when you first load the API. For example:
       // <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=drawing">
       var polyline=null;
       var map;
+      var ros = new ROSLIB.Ros();
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
@@ -69,8 +71,6 @@
   
 	// Connecting to ROS
 	// -----------------
-	var ros = new ROSLIB.Ros();
-
 	// If there is an error on the backend, an 'error' emit will be emitted.
 	ros.on('error', function(error) {
 	  document.getElementById('connecting').style.display = 'none';
@@ -120,7 +120,8 @@
           polyline = event.overlay;
           polyline.setEditable(true);
           // Searching within the polyline.
-          displayCoordinates();          
+          //displayCoordinates();     
+          publishCoordinates();
           // Make sure the path is recomputed if the poly is changed.
           polyline.getPath().addListener('set_at', displayCoordinates);
           polyline.getPath().addListener('insert_at', displayCoordinates);
@@ -129,15 +130,9 @@
         drawingManager.setMap(map);
      
        
-	// Publishing a Topic
-	// ------------------
-
-	// First, we create a Topic object with details of the topic's name and message type.
-	var cmdVel = new ROSLIB.Topic({
-	  ros : ros,
-	  name : '/cmd_vel',
-	  messageType : 'geometry_msgs/Twist'
-	});
+	
+	
+	
       } 
       function displayCoordinates() {
         var latLngArray = polyline.getPath();
@@ -150,6 +145,41 @@
         for (i=0; i<latLngArray.length; i++){
 	  coord = coords[i];
 	  console.log(coord.toString());
+        }
+      }
+      function publishCoordinates() {
+	// Publishing a Topic
+	// ------------------
+
+	// First, we create a Topic object with details of the topic's name and message type.
+	var cmdVel = new ROSLIB.Topic({
+	  ros : ros,
+	  name : '/cmd_vel',
+	  messageType : 'geometry_msgs/Twist'
+	});
+        var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var twist = new ROSLIB.Message({
+	    linear : {
+		x : 0.1,
+		y : 0.5,
+		z : 0.3
+	    },
+	    angular : {
+		x : -0.1,
+		y : -0.5,
+		z : -0.3
+	    }
+	});
+
+        var coords = latLngArray.getArray();
+        var coord;
+        for (i=0; i<latLngArray.length; i++){
+	  coord = coords[i];
+	  console.log(coord.toString());
+	  twist.linear.x=coord.lat();
+	  twist.linear.y=coord.lng();
+	  cmdVel.publish(twist);
         }
        }
     </script>
