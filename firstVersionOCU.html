@@ -171,11 +171,6 @@
 	  name : '/move_base_simple/goal',
 	  messageType : 'geometry_msgs/PoseStamped'
 	});
-	var globalPlan = new ROSLIB.Topic({
-	  ros : ros,
-	  name : '/move_base/TrajectoryPlannerROS/global_plan',
-	  messageType : 'nav_msgs/Path'
-	});
        
         var sGoal = new ROSLIB.Message({
 	    header : {
@@ -188,7 +183,7 @@
 	    },
 	    pose:{}
 	});
-// /SENSOR/GPS /move_base/goal	
+
 	var latLngArray = polyline.getPath();
         var size = latLngArray.length;
         var coords = latLngArray.getArray();
