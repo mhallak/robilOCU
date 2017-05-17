@@ -181,31 +181,20 @@
 		},
 		frame_id: 'WORLD'
 	    },
-	    poses: [{
-		header: {
-		  seq : 0,
-		  stamp : { 
-		    secs: 140,
-		    nsecs: 342000000
-		  },
-		  frame_id: 'WORLD'
-		},
-		pose : {
-		    position : {
-		      x: 0.0,
-		      y: 0.0,
-		      z: 0.0
-		    },
-		    orientation:{
-		      x: 0.0,
-		      y: 0.0,
-		      z: 0.0,
-		      w: 0.0
-		    }
-		}
-	    }]
+	    poses: []
 	});
-	var vpose = {
+	
+	var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var coords = latLngArray.getArray();
+        var coord;
+        for (i=0; i<latLngArray.length; i++){
+	  coord = coords[i];
+	  console.log(coord.toString());
+	  //twist.linear.x=coord.lat();
+	  //twist.linear.y=coord.lng();
+	  //cmdVel.publish(twist);
+	  var vpose = {
 		header: {
 		  seq : 0,
 		  stamp : { 
@@ -228,23 +217,13 @@
 		    }
 		}
 	    };
-	var latLngArray = polyline.getPath();
-        var size = latLngArray.length;
-        var coords = latLngArray.getArray();
-        var coord;
-        for (i=0; i<latLngArray.length; i++){
-	  coord = coords[i];
-	  console.log(coord.toString());
-	  //twist.linear.x=coord.lat();
-	  //twist.linear.y=coord.lng();
-	  //cmdVel.publish(twist);
 	  vpose.pose.position.x = coord.lat();
 	  vpose.pose.position.y = coord.lng();
 	  //path.poses[i].header = vpose.header;
 	  path.poses[i] = vpose;
 	  //path.poses.pose.position.y = coord.lng();
-	  globalPlan.publish(path);
         }
+        globalPlan.publish(path);
        }
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
