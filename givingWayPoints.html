@@ -123,18 +123,15 @@
           //displayCoordinates();     
           publishCoordinates();
           // Make sure the path is recomputed if the poly is changed.
-          polyline.getPath().addListener('set_at', displayCoordinates);
-          polyline.getPath().addListener('insert_at', displayCoordinates);
+          //polyline.getPath().addListener('set_at', displayCoordinates);
+          //polyline.getPath().addListener('insert_at', displayCoordinates);
+          polyline.getPath().addListener('set_at', publishCoordinates);
+          polyline.getPath().addListener('insert_at', publishCoordinates);
           });
           
         drawingManager.setMap(map);
-     
-       
-	
-	
-	
-      } 
-      function displayCoordinates() {
+   } 
+   function displayCoordinates() {
         var latLngArray = polyline.getPath();
         var size = latLngArray.length;
         var dString = latLngArray.getArray().toString(); //google.maps.geometry.encoding.encodePath(latLngArray);
@@ -145,20 +142,24 @@
         for (i=0; i<latLngArray.length; i++){
 	  coord = coords[i];
 	  console.log(coord.toString());
-        }
-      }
-      function publishCoordinates() {
+	}
+   }
+   function publishCoordinates() {
+      
 	// Publishing a Topic
 	// ------------------
-
 	// First, we create a Topic object with details of the topic's name and message type.
 	var cmdVel = new ROSLIB.Topic({
 	  ros : ros,
 	  name : '/cmd_vel',
 	  messageType : 'geometry_msgs/Twist'
 	});
-        var latLngArray = polyline.getPath();
-        var size = latLngArray.length;
+	var globalPlan = new ROSLIB.Topic({
+	  ros : ros,
+	  name : '/move_base/TrajectoryPlannerROS/global_plan',
+	  messageType : 'nav_msgs/Path'
+	});
+ 
         var twist = new ROSLIB.Message({
 	    linear : {
 		x : 0.1,
@@ -171,15 +172,78 @@
 		z : -0.3
 	    }
 	});
-
+        var path = new ROSLIB.Message({
+	    header : {
+		seq : 0,
+		stamp : { 
+		  secs: 140,
+		  nsecs: 342000000
+		},
+		frame_id: 'WORLD'
+	    },
+	    poses: [{
+		header: {
+		  seq : 0,
+		  stamp : { 
+		    secs: 140,
+		    nsecs: 342000000
+		  },
+		  frame_id: 'WORLD'
+		},
+		pose : {
+		    position : {
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0
+		    },
+		    orientation:{
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0,
+		      w: 0.0
+		    }
+		}
+	    }]
+	});
+	var vpose = {
+		header: {
+		  seq : 0,
+		  stamp : { 
+		    secs: 140,
+		    nsecs: 342000000
+		  },
+		  frame_id: 'WORLD'
+		},
+		pose : {
+		    position : {
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0
+		    },
+		    orientation:{
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0,
+		      w: 0.0
+		    }
+		}
+	    };
+	var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
         var coords = latLngArray.getArray();
         var coord;
         for (i=0; i<latLngArray.length; i++){
 	  coord = coords[i];
 	  console.log(coord.toString());
-	  twist.linear.x=coord.lat();
-	  twist.linear.y=coord.lng();
-	  cmdVel.publish(twist);
+	  //twist.linear.x=coord.lat();
+	  //twist.linear.y=coord.lng();
+	  //cmdVel.publish(twist);
+	  vpose.pose.position.x = coord.lat();
+	  vpose.pose.position.y = coord.lng();
+	  //path.poses[i].header = vpose.header;
+	  path.poses[i] = vpose;
+	  //path.poses.pose.position.y = coord.lng();
+	  globalPlan.publish(path);
         }
        }
     </script>
