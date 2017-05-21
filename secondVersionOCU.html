@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>RobilOCU</title>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <style>
+      /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+      #map {
+        height: 100%;
+      }
+      /* Optional: Makes the sample page fill the window. */
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #toggle-drawing {
+        width: 27%;
+        position: relative;
+        margin-left: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="statusIndicator">
+    <p id="connecting">
+      Connecting to rosbridge...
+    </p>
+    <p id="connected" style="color:#00D600; display:none">
+      Connected
+    </p>
+    <p id="error" style="color:#FF0000; display:none">
+      Error in the backend!
+    </p>
+    <p id="closed" style="display:none">
+      Connection closed.
+    </p>
+    </div>
+    <script src="http://cdn.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
+    <script src="/home/michele/roslibjs/build/roslib.js"></script>
+
+    <script>
+      // This example requires the Drawing library. Include the libraries=drawing
+      // parameter when you first load the API. For example:
+      // <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=drawing">
+      var polyline=null;
+      var map;
+      var ros = new ROSLIB.Ros();
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 32.009257, lng: 34.9103223},
+          zoom: 16,
+          mapTypeId: 'satellite'
+        });
+
+        var robil= {lat: 32.009257, lng: 34.9103223};
+        var marker = new google.maps.Marker({
+	  position: robil,
+	  map: map,
+	  title: 'Start Point'
+	});
+	
+        
+	// Connecting to ROS
+	// -----------------
+	// If there is an error on the backend, an 'error' emit will be emitted.
+	ros.on('error', function(error) {
+	  document.getElementById('connecting').style.display = 'none';
+	  document.getElementById('connected').style.display = 'none';
+	  document.getElementById('closed').style.display = 'none';
+	  document.getElementById('error').style.display = 'inline';
+	  console.log(error);
+	});
+
+	// Find out exactly when we made a connection.
+	ros.on('connection', function() {
+	  console.log('Connection made!');
+	  document.getElementById('connecting').style.display = 'none';
+	  document.getElementById('error').style.display = 'none';
+	  document.getElementById('closed').style.display = 'none';
+	  document.getElementById('connected').style.display = 'inline';
+	});
+
+	ros.on('close', function() {
+	  console.log('Connection closed.');
+	  document.getElementById('connecting').style.display = 'none';
+	  document.getElementById('connected').style.display = 'none';
+	  document.getElementById('closed').style.display = 'inline';
+	});
+
+	// Create a connection to the rosbridge WebSocket server.
+	ros.connect('ws://localhost:9090');
+	
+	//get initial position of Robil
+	var init_pos_gps = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/GPS',
+	  messageType: 'sensor_msgs/NavSatFix'
+	})
+	init_pos_gps.subscribe(function(message) {
+	  console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
+	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
+	  //robil.lat = message.latitude;
+	  //robil.lng = message.longitude;
+	  marker.setPosition(myLatLng);
+	  map.panTo(myLatLng);
+	  var infowindow = new google.maps.InfoWindow({
+	  content: 'Start Here' + ' lat:' + message.latitude + ' lng: '+ message.longitude
+	  });
+	  //marker.addListener('click', function() {//});
+	  infowindow.open(map, marker);
+	  init_pos_gps.unsubscribe();
+	});
+	
+	
+        var drawingManager = new google.maps.drawing.DrawingManager({
+          drawingMode: google.maps.drawing.OverlayType.POLYLINE,
+          drawingControl: true,
+          drawingControlOptions: {
+            position: google.maps.ControlPosition.TOP_CENTER,
+            drawingModes: [google.maps.drawing.OverlayType.POLYLINE]
+	  }
+        });
+        
+        drawingManager.addListener('overlaycomplete', function(event) {
+	  // First, check if there is an existing polyline.
+	  // If there is, get rid of it and remove the markers
+          if (polyline) {
+	      polyline.setMap(null);
+	  }
+          // Switching the drawing mode to the HAND (i.e., no longer drawing).
+          drawingManager.setDrawingMode(null);
+          // Creating a new editable polyline from the overlay.
+          polyline = event.overlay;
+          polyline.setEditable(true);
+          // Searching within the polyline.
+          //displayCoordinates();     
+          publishCoordinates();
+          // Make sure the path is recomputed if the poly is changed.
+          //polyline.getPath().addListener('set_at', displayCoordinates);
+          //polyline.getPath().addListener('insert_at', displayCoordinates);
+          polyline.getPath().addListener('set_at', publishCoordinates);
+          polyline.getPath().addListener('insert_at', publishCoordinates);
+          });
+          
+        drawingManager.setMap(map);
+   } 
+   function displayCoordinates() {
+        var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var dString = latLngArray.getArray().toString(); //google.maps.geometry.encoding.encodePath(latLngArray);
+        window.alert("The size of the polyline is "+size);
+        window.alert("The coordinates of the polyline are "+dString);
+        var coords = latLngArray.getArray();
+        var coord;
+        for (i=0; i<latLngArray.length; i++){
+	  coord = coords[i];
+	  console.log(coord.toString());
+	}
+   }
+   
+   function publishCoordinates() {
+      
+	// Using Action Client
+	// ------------------
+	var moveBaseClient = new ROSLIB.ActionClient({
+	  ros : ros,
+	  serverName : '/move_base',
+	  actionName : '/move_base_msgs/MoveBaseAction'
+	});
+       
+        var sGoal = new ROSLIB.Goal({
+	     actionClient : moveBaseClient,
+	     goalMessage : {
+	     	target_pose: {
+		  header:{},
+		  pose:{}
+		}
+	     }
+	});
+	  // Print out their output into the terminal.
+	sGoal.on('feedback', function(feedback) {
+	console.log('Feedback: ' + feedback.sequence);
+	});
+	sGoal.on('result', function(result) {
+	console.log('Final Result: ' + result.sequence);
+	});
+
+	var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var coords = latLngArray.getArray();
+        var coord;
+        for (i=1; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
+	  coord = coords[i];
+	  console.log(coord.toString());
+	  //twist.linear.x=coord.lat();
+	  //twist.linear.y=coord.lng();
+	  //cmdVel.publish(twist);
+	  var vpose = {
+		header: {
+		  seq : 0,
+		  stamp : { 
+		    secs: 140,
+		    nsecs: 342000000
+		  },
+		  frame_id: 'WORLD'
+		},
+		pose : {
+		    position : {
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0
+		    },
+		    orientation:{
+		      x: 0.0,
+		      y: 0.0,
+		      z: 0.0,
+		      w: 1.0
+		    }
+		}
+	    };
+	  vpose.pose.position.x = coord.lat();
+	  vpose.pose.position.y = coord.lng();
+	  sGoal.goalMessage.goal.target_pose = vpose;
+	 // sGoal.goalMessage.goal.target_pose.pose = vpose.pose;
+	  
+	  
+	  //path.poses.pose.position.y = coord.lng();
+        }
+        // Send the goal to the action server.
+	sGoal.send();
+       }
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
+         async defer></script>
+  </body>
+</html>
