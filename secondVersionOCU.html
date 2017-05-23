@@ -183,19 +183,27 @@
 	});
 	  // Print out their output into the terminal.
 	sGoal.on('feedback', function(feedback) {
-	console.log('Feedback: ' + feedback.sequence);
+	  var newPos= {lat:0.0, lng:0.0};
+	  newPos.lat = feedback.base_position.pose.position.x;
+	  newPos.lng = feedback.base_position.pose.position.y;
+          console.log('Feedback: lat: ' + newPos.lat + " lng: " + newPos.lng);
 	});
 	sGoal.on('result', function(result) {
-	console.log('Final Result: ' + result.sequence);
+	//Result empty for this action
+          
 	});
-
+	sGoal.on('status', function(status) {
+	  console.log('Status is: ' + status.text);
+	//Result empty for this action
+          
+	});
 	var latLngArray = polyline.getPath();
         var size = latLngArray.length;
         var coords = latLngArray.getArray();
         var coord;
         for (i=1; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
 	  coord = coords[i];
-	  console.log(coord.toString());
+	  console.log("Goal is:" + coord.toString());
 	  //twist.linear.x=coord.lat();
 	  //twist.linear.y=coord.lng();
 	  //cmdVel.publish(twist);
