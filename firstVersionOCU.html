@@ -49,6 +49,7 @@
       var polyline=null;
       var map;
       var ros = new ROSLIB.Ros();
+      var movingMarker;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
@@ -60,9 +61,15 @@
         var marker = new google.maps.Marker({
 	  position: robil,
 	  map: map,
-	  title: 'Start Point'
+	  title: 'Start Point',
+	  label: 'S'
 	});
-	
+	movingMarker = new google.maps.Marker({
+	  position: robil,
+	  map: map,
+	  title: 'RobilIcon',
+	  label: 'R'
+      });  
         
 	// Connecting to ROS
 	// -----------------
@@ -163,9 +170,22 @@
    }
    function publishCoordinates() {
       
-	// Publishing a Topic
-	// ------------------
-	// First, we create a Topic object with details of the topic's name and message type.
+	//Monitoring bobcat position
+	var pos_gps = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/GPS',
+	  messageType: 'sensor_msgs/NavSatFix'
+	})
+	pos_gps.subscribe(function(message) {
+	  //console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
+	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
+	  console.log('myLatLng: ', myLatLng.toString());
+	  movingMarker.setPosition(myLatLng);
+	  map.panTo(myLatLng);
+	  
+	});
+	
+	//Simple move base
 	var simpleGoal = new ROSLIB.Topic({
 	  ros : ros,
 	  name : '/move_base_simple/goal',

@@ -22,12 +22,18 @@
     <div id="map"></div>
     <script>
       var map;
+      var x =  0.0181880679506;
+      var y =  0.00892522724708;
+      var z = -0.669391150416;
+      var w = -0.742633841303;
+      var roll, pitch, yaw;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
           zoom: 8
         });
         var robil= {lat: 32.009257, lng: 34.9103223};
+        var robil2= {lat: 31.50610640448054, lng: 33.27156199226142};
         var marker = new google.maps.Marker({
 	  position: robil,
 	  map: map,
@@ -39,6 +45,25 @@
 	marker.addListener('click', function() {
 	  infowindow.open(map, marker);
 	});
+	var marker2 = new google.maps.Marker({
+	  position: robil2,
+	  map: map,
+	  title: 'Start Point'
+	});
+	convertQuaternionToRollPitchYaw(x,y,z,w);
+	convertRadianToDegree(yaw);
+	
+      }
+      function convertQuaternionToRollPitchYaw(x,y,z,w){
+        roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
+        pitch = Math.atan2(2*x*w + 2*y*z, 1 - 2*x*x - 2*z*z);
+        yaw = Math.asin(2*x*y + 2*z*w);
+        console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
+      }
+      function convertRadianToDegree(rad){
+	var yaw_deg = rad*180/Math.PI;
+	if (yaw_deg < 0) yaw_deg += 360.0;
+	console.log("yaw_degrees:"+yaw_deg);
       }
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&callback=initMap"

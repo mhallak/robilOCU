@@ -49,21 +49,43 @@
       var polyline=null;
       var map;
       var ros = new ROSLIB.Ros();
+      var counter = 0;      
+      var movingMarker;
+      var start_robil= {lat: 32.009257, lng: 34.9103223};
+      var roll, pitch, yaw;
+      var yaw_deg;
+      var symb_rotation;
+      var earthRadiusInKMs= 6378.137;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
           zoom: 16,
           mapTypeId: 'satellite'
         });
-
-        var robil= {lat: 32.009257, lng: 34.9103223};
-        var marker = new google.maps.Marker({
-	  position: robil,
-	  map: map,
-	  title: 'Start Point'
-	});
-	
         
+        var bobcatOrientation = {
+	  //path: 'M 125,5 155,90 245,90 175,145 200,230 125,180 50,230 75,145 5,90 95,90 z',
+	  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+	  fillColor: 'gold',
+	  //fillOpacity: 0.8,
+	  scale: 3,
+	  strokeColor: 'gold',
+	  strokeWeight: 3,
+	  rotation: symb_rotation
+	};
+        var marker = new google.maps.Marker({
+	  position: start_robil,
+	  map: map,
+	  title: 'Start Point',
+	  label: 'S'
+	});
+	movingMarker = new google.maps.Marker({
+	  position: start_robil,
+	  map: map,
+	  title: 'RobilIcon',
+	  label: 'R',
+	  icon: bobcatOrientation //'Another_Bobcat_tracked_side.png'
+      });  
 	// Connecting to ROS
 	// -----------------
 	// If there is an error on the backend, an 'error' emit will be emitted.
@@ -100,12 +122,19 @@
 	  name: '/SENSORS/GPS',
 	  messageType: 'sensor_msgs/NavSatFix'
 	})
+	var init_rot_ins = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/INS',
+	  messageType: 'sensor_msgs/Imu'
+	})
 	init_pos_gps.subscribe(function(message) {
 	  console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
 	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
+	  console.log('myLatLng: ', myLatLng.toString());
 	  //robil.lat = message.latitude;
 	  //robil.lng = message.longitude;
 	  marker.setPosition(myLatLng);
+	  movingMarker.setPosition(myLatLng);
 	  map.panTo(myLatLng);
 	  var infowindow = new google.maps.InfoWindow({
 	  content: 'Start Here' + ' lat:' + message.latitude + ' lng: '+ message.longitude
@@ -114,7 +143,22 @@
 	  infowindow.open(map, marker);
 	  init_pos_gps.unsubscribe();
 	});
-	
+	init_rot_ins.subscribe(function(message) {
+	  console.log('Initial Rotation is: x:' + message.orientation.x + ' y:' + message.orientation.y + ' z:' + message.orientation.z + ' w:' + message.orientation.w);
+	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
+	  convertRadianToDegree(yaw);
+	  symb_rotation = yaw_deg;
+	  bobcatOrientation.rotation = yaw_deg;
+	  movingMarker.setIcon(bobcatOrientation);
+	  
+	  var infowindow = new google.maps.InfoWindow({
+	  content: 'Rotation' + ' yaw_deg:' + yaw_deg
+	  });
+	  //marker.addListener('click', function() {//});
+	  infowindow.open(map, movingMarker);
+	  init_rot_ins.unsubscribe();
+	});
 	
         var drawingManager = new google.maps.drawing.DrawingManager({
           drawingMode: google.maps.drawing.OverlayType.POLYLINE,
@@ -164,6 +208,20 @@
    
    function publishCoordinates() {
       
+	//Monitoring bobcat position
+	var pos_gps = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/GPS',
+	  messageType: 'sensor_msgs/NavSatFix'
+	})
+	pos_gps.subscribe(function(message) {
+	  //console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
+	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
+	  //console.log('myLatLng: ', myLatLng.toString());
+	  movingMarker.setPosition(myLatLng);
+	  map.panTo(myLatLng);
+	  
+	});
 	// Using Action Client
 	// ------------------
 	var moveBaseClient = new ROSLIB.ActionClient({
@@ -181,32 +239,45 @@
 		}
 	     }
 	});
+
 	  // Print out their output into the terminal.
 	sGoal.on('feedback', function(feedback) {
-	  var newPos= {lat:0.0, lng:0.0};
-	  newPos.lat = feedback.base_position.pose.position.x;
-	  newPos.lng = feedback.base_position.pose.position.y;
-          console.log('Feedback: lat: ' + newPos.lat + " lng: " + newPos.lng);
+	    //console.log('Feedback: lat: ' + feedback.base_position.pose.position.x + " lng: " + feedback.base_position.pose.position.y);
 	});
 	sGoal.on('result', function(result) {
 	//Result empty for this action
           
 	});
 	sGoal.on('status', function(status) {
-	  console.log('Status is: ' + status.text);
-	//Result empty for this action
-          
+	  //console.log('Status is: ' + status.text);
+	  if (status.status == 3){
+	    //stop the action in someway
+	    console.log("Done at:"+movingMarker.position.lat()+","+movingMarker.position.lng()); 
+	    start_robil.lat = movingMarker.position.lat();
+	    start_robil.lng = movingMarker.position.lng();
+	    sGoal.isFinished= true;
+	    pos_gps.unsubscribe();
+	  }
 	});
+	
+
 	var latLngArray = polyline.getPath();
         var size = latLngArray.length;
         var coords = latLngArray.getArray();
         var coord;
         for (i=1; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
 	  coord = coords[i];
-	  console.log("Goal is:" + coord.toString());
+	  console.log("Goal Lat Lng is:" + coord.toString());
 	  //twist.linear.x=coord.lat();
 	  //twist.linear.y=coord.lng();
 	  //cmdVel.publish(twist);
+	  var goalMarker = new google.maps.Marker({
+	    position: coord,
+	    map: map,
+	    title: 'Goal',
+	    label: 'G'
+	  });
+	  
 	  var vpose = {
 		header: {
 		  seq : 0,
@@ -229,18 +300,56 @@
 		      w: 1.0
 		    }
 		}
-	    };
-	  vpose.pose.position.x = coord.lat();
-	  vpose.pose.position.y = coord.lng();
+	  };
+//	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
+	  var OrigLatRadians = convertDegreeToRadian(movingMarker.position.lat());
+	  var tmp_x_km = earthRadiusInKMs*(convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(movingMarker.position.lng()))*Math.cos(OrigLatRadians);
+	  var tmp_y_km = earthRadiusInKMs*(convertDegreeToRadian(coord.lat()) - OrigLatRadians);
+	  var tmp_x=1000*tmp_x_km;
+	  var tmp_y=1000*tmp_y_km;
+//	  var tmp_x = 111190*(coord.lat() - movingMarker.position.lat());
+//	  var tmp_y = 111190*(coord.lng() - movingMarker.position.lng());
+	  var new_x, new_y;
+	  var newxy = {new_x, new_y};
+	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
+	  var teta = yaw ; //Math.PI/2 - yaw;
+	  newxy = rotateCoordinatesSystem(teta,tmp_x,tmp_y);
+	  vpose.pose.position.x = newxy.n_x;
+	  vpose.pose.position.y = newxy.n_y;
+	  //vpose.pose.position.x = 111190*(coord.lat() - movingMarker.position.lat());
+	  //vpose.pose.position.y = 111190*(coord.lng() - movingMarker.position.lng());
 	  sGoal.goalMessage.goal.target_pose = vpose;
-	 // sGoal.goalMessage.goal.target_pose.pose = vpose.pose;
-	  
-	  
-	  //path.poses.pose.position.y = coord.lng();
+	  var infoGoal = new google.maps.InfoWindow({
+	      content: 'Goal' + ' x:' + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m'
+	  });
+	  //marker.addListener('click', function() {//});
+	  infoGoal.open(map, goalMarker);
+	  console.log("Goal is: x:" + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m');
         }
         // Send the goal to the action server.
 	sGoal.send();
        }
+   function convertQuaternionToRollPitchYaw(x,y,z,w){
+        roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
+        pitch = Math.atan2(2*x*w + 2*y*z, 1 - 2*x*x - 2*z*z);
+        yaw = Math.asin(2*x*y + 2*z*w);
+   }
+   function convertRadianToDegree(rad){
+	yaw_deg = rad*180/Math.PI;
+	if (yaw_deg < 0) yaw_deg += 360.0;
+	console.log("yaw_degrees:"+yaw_deg);
+   }
+   function convertDegreeToRadian(deg){
+	var rad = Math.PI*deg/180
+	if (rad < 0) rad +=2*Math.PI;
+	return rad;
+   }
+   function rotateCoordinatesSystem(rad,x,y){
+	var n_x = x*Math.cos(rad) + y*Math.sin(rad);
+	var n_y = -x*Math.sin(rad) + y*Math.cos(rad);
+	var nxy = {n_x, n_y};
+	return nxy;
+    }
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
          async defer></script>

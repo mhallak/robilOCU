@@ -61,7 +61,9 @@
   goal.on('result', function(result) {
     console.log('Final Result: ' + result.sequence);
   });
-
+  goal.on('status', function(status) {
+    console.log('status: ' + status.text);
+  });
   // Send the goal to the action server.
   goal.send();
 </script>
