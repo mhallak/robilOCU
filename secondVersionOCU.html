@@ -145,9 +145,10 @@
 	});
 	init_rot_ins.subscribe(function(message) {
 	  console.log('Initial Rotation is: x:' + message.orientation.x + ' y:' + message.orientation.y + ' z:' + message.orientation.z + ' w:' + message.orientation.w);
-	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  convertQuaternionToRollPitchYaw(message.orientation.w, message.orientation.x,message.orientation.y,message.orientation.z);
+	  	  //convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
 	  console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
-	  convertRadianToDegree(yaw);
+	  yaw_deg = convertRadianToDegree(yaw+Math.PI);
 	  symb_rotation = yaw_deg;
 	  bobcatOrientation.rotation = yaw_deg;
 	  movingMarker.setIcon(bobcatOrientation);
@@ -312,7 +313,8 @@
 	  var new_x, new_y;
 	  var newxy = {new_x, new_y};
 	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
-	  var teta = yaw ; //Math.PI/2 - yaw;
+	  var teta = yaw+ Math.PI; //Math.PI/2 - yaw;
+	  console.log("Teta is:"+teta);
 	  newxy = rotateCoordinatesSystem(teta,tmp_x,tmp_y);
 	  vpose.pose.position.x = newxy.n_x;
 	  vpose.pose.position.y = newxy.n_y;
@@ -330,14 +332,38 @@
 	sGoal.send();
        }
    function convertQuaternionToRollPitchYaw(x,y,z,w){
-        roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
+   //REF: middle of http://answers.unity3d.com/questions/416169/finding-pitchrollyaw-from-quaternions.html
+ /*       roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
         pitch = Math.atan2(2*x*w + 2*y*z, 1 - 2*x*x - 2*z*z);
-        yaw = Math.asin(2*x*y + 2*z*w);
+        yaw = Math.asin(2*x*y + 2*z*w);*/
+   //REF: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+ /*              
+        //roll x-axis clockwise rotation
+        var t0 = 2.0*(w*x+y*z);
+        var t1 = 1.0 - 2.0*(x*x+y*y);
+        roll = Math.atan2(t0,t1);
+        
+        //pith y-axis clockwise rotation
+        var t2 = 2.0*(w*y -z*x);
+        if (t2 > 1.0) t2=1.0;
+        if (t2 < -1.0)t2=-1.0;
+        pitch = Math.asin(t2);
+        
+        //yaw z-axis clockwise rotation
+        var t3 = 2.0*(w*z+x*y);
+        var t4 = 1.0 - 2.0*(y*y + z*z);
+        yaw = Math.atan2(t3,t4);*/
+        
+    //REF:http://sunday-lab.blogspot.co.il/2008/04/get-pitch-yaw-roll-from-quaternion.html
+        pitch = Math.atan2(2*(y*z + w*x), w*w - x*x - y*y + z*z);
+        yaw = Math.asin(-2*(x*z - w*y));
+        roll = Math.atan2(2*(x*y + w*z), w*w + x*x - y*y - z*z);
    }
    function convertRadianToDegree(rad){
-	yaw_deg = rad*180/Math.PI;
-	if (yaw_deg < 0) yaw_deg += 360.0;
-	console.log("yaw_degrees:"+yaw_deg);
+        var rad_deg = rad*180/Math.PI;
+	if (rad_deg < 0) rad_deg += 360.0;
+	console.log("yaw_degrees:"+rad_deg);
+	return rad_deg;
    }
    function convertDegreeToRadian(deg){
 	var rad = Math.PI*deg/180
@@ -345,8 +371,9 @@
 	return rad;
    }
    function rotateCoordinatesSystem(rad,x,y){
-	var n_x = x*Math.cos(rad) + y*Math.sin(rad);
-	var n_y = -x*Math.sin(rad) + y*Math.cos(rad);
+   //REF: http://www.continuummechanics.org/coordxforms.html
+	var n_x = x*Math.cos(rad) - y*Math.sin(rad);
+	var n_y = x*Math.sin(rad) + y*Math.cos(rad);
 	var nxy = {n_x, n_y};
 	return nxy;
     }
