@@ -56,6 +56,7 @@
       var yaw_deg;
       var symb_rotation;
       var earthRadiusInKMs= 6378.137;
+      var bobcatOrientation;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
@@ -63,7 +64,7 @@
           mapTypeId: 'satellite'
         });
         
-        var bobcatOrientation = {
+        bobcatOrientation = {
 	  //path: 'M 125,5 155,90 245,90 175,145 200,230 125,180 50,230 75,145 5,90 95,90 z',
 	  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
 	  fillColor: 'gold',
@@ -145,10 +146,10 @@
 	});
 	init_rot_ins.subscribe(function(message) {
 	  console.log('Initial Rotation is: x:' + message.orientation.x + ' y:' + message.orientation.y + ' z:' + message.orientation.z + ' w:' + message.orientation.w);
-	  convertQuaternionToRollPitchYaw(message.orientation.w, message.orientation.x,message.orientation.y,message.orientation.z);
-	  	  //convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  //convertQuaternionToRollPitchYaw(message.orientation.w, message.orientation.x,message.orientation.y,message.orientation.z);
+	  	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
 	  console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
-	  yaw_deg = convertRadianToDegree(yaw+Math.PI);
+	  yaw_deg = -convertRadianToDegree(yaw);
 	  symb_rotation = yaw_deg;
 	  bobcatOrientation.rotation = yaw_deg;
 	  movingMarker.setIcon(bobcatOrientation);
@@ -223,6 +224,19 @@
 	  map.panTo(myLatLng);
 	  
 	});
+	var rot_ins = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/INS',
+	  messageType: 'sensor_msgs/Imu'
+	})
+	rot_ins.subscribe(function(message) {
+	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  //console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
+	  yaw_deg = -convertRadianToDegree(yaw);
+	  symb_rotation = yaw_deg;
+	  bobcatOrientation.rotation = yaw_deg;
+	  movingMarker.setIcon(bobcatOrientation);	
+	});
 	// Using Action Client
 	// ------------------
 	var moveBaseClient = new ROSLIB.ActionClient({
@@ -258,6 +272,7 @@
 	    start_robil.lng = movingMarker.position.lng();
 	    sGoal.isFinished= true;
 	    pos_gps.unsubscribe();
+	    rot_ins.unsubscribe();
 	  }
 	});
 	
@@ -304,20 +319,20 @@
 	  };
 //	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
 	  var OrigLatRadians = convertDegreeToRadian(movingMarker.position.lat());
-	  var tmp_x_km = earthRadiusInKMs*(convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(movingMarker.position.lng()))*Math.cos(OrigLatRadians);
-	  var tmp_y_km = earthRadiusInKMs*(convertDegreeToRadian(coord.lat()) - OrigLatRadians);
-	  var tmp_x=1000*tmp_x_km;
-	  var tmp_y=1000*tmp_y_km;
+	  var tmp_x_km = -earthRadiusInKMs*Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(movingMarker.position.lng()));
+	  var tmp_y_km = earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
+	  var tmp_y=1000*tmp_x_km;
+	  var tmp_x=1000*tmp_y_km;
 //	  var tmp_x = 111190*(coord.lat() - movingMarker.position.lat());
 //	  var tmp_y = 111190*(coord.lng() - movingMarker.position.lng());
 	  var new_x, new_y;
 	  var newxy = {new_x, new_y};
 	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
-	  var teta = yaw+ Math.PI; //Math.PI/2 - yaw;
+	  var teta = yaw;//+ Math.PI; //Math.PI/2 - yaw;
 	  console.log("Teta is:"+teta);
 	  newxy = rotateCoordinatesSystem(teta,tmp_x,tmp_y);
-	  vpose.pose.position.x = newxy.n_x;
-	  vpose.pose.position.y = newxy.n_y;
+	  vpose.pose.position.x = tmp_x;//newxy.n_x;
+	  vpose.pose.position.y = tmp_y;//newxy.n_y;
 	  //vpose.pose.position.x = 111190*(coord.lat() - movingMarker.position.lat());
 	  //vpose.pose.position.y = 111190*(coord.lng() - movingMarker.position.lng());
 	  sGoal.goalMessage.goal.target_pose = vpose;
@@ -333,9 +348,18 @@
        }
    function convertQuaternionToRollPitchYaw(x,y,z,w){
    //REF: middle of http://answers.unity3d.com/questions/416169/finding-pitchrollyaw-from-quaternions.html
- /*       roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
+   // Here same result more or less than what I see in
+   // https://github.com/iosp/robil2/blob/master/src/Simulation/live_bobcat/worlds/bobcat_tracked_static_arm_worlds/bobcat_tracked_static_arm_TestWorld4.world
+   /*
+   <include>
+            <uri>model://bobcat_tracked_static_arm</uri>
+            <name>Sahar</name>
+            <pose>40 10 1.8098 0 0 1.45844</pose>
+        </include>
+        */
+       roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
         pitch = Math.atan2(2*x*w + 2*y*z, 1 - 2*x*x - 2*z*z);
-        yaw = Math.asin(2*x*y + 2*z*w);*/
+        yaw = Math.asin(2*x*y + 2*z*w);
    //REF: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
  /*              
         //roll x-axis clockwise rotation
@@ -355,14 +379,14 @@
         yaw = Math.atan2(t3,t4);*/
         
     //REF:http://sunday-lab.blogspot.co.il/2008/04/get-pitch-yaw-roll-from-quaternion.html
-        pitch = Math.atan2(2*(y*z + w*x), w*w - x*x - y*y + z*z);
+    /*    pitch = Math.atan2(2*(y*z + w*x), w*w - x*x - y*y + z*z);
         yaw = Math.asin(-2*(x*z - w*y));
-        roll = Math.atan2(2*(x*y + w*z), w*w + x*x - y*y - z*z);
+        roll = Math.atan2(2*(x*y + w*z), w*w + x*x - y*y - z*z);*/
    }
    function convertRadianToDegree(rad){
         var rad_deg = rad*180/Math.PI;
 	if (rad_deg < 0) rad_deg += 360.0;
-	console.log("yaw_degrees:"+rad_deg);
+	//console.log("yaw_degrees:"+rad_deg);
 	return rad_deg;
    }
    function convertDegreeToRadian(deg){
@@ -372,8 +396,8 @@
    }
    function rotateCoordinatesSystem(rad,x,y){
    //REF: http://www.continuummechanics.org/coordxforms.html
-	var n_x = x*Math.cos(rad) - y*Math.sin(rad);
-	var n_y = x*Math.sin(rad) + y*Math.cos(rad);
+	var n_x = x*Math.cos(rad) + y*Math.sin(rad);
+	var n_y = -x*Math.sin(rad) + y*Math.cos(rad);
 	var nxy = {n_x, n_y};
 	return nxy;
     }
