@@ -49,28 +49,44 @@
       var polyline=null;
       var map;
       var ros = new ROSLIB.Ros();
+      var counter = 0;      
       var movingMarker;
+      var start_robil= {lat: 32.009257, lng: 34.9103223};
+      var roll, pitch, yaw;
+      var yaw_deg;
+      var symb_rotation;
+      var earthRadiusInKMs= 6378.137;
+      var bobcatOrientation;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: {lat: 32.009257, lng: 34.9103223},
           zoom: 16,
           mapTypeId: 'satellite'
         });
-
-        var robil= {lat: 32.009257, lng: 34.9103223};
+        
+        bobcatOrientation = {
+	  //path: 'M 125,5 155,90 245,90 175,145 200,230 125,180 50,230 75,145 5,90 95,90 z',
+	  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+	  fillColor: 'gold',
+	  //fillOpacity: 0.8,
+	  scale: 3,
+	  strokeColor: 'gold',
+	  strokeWeight: 3,
+	  rotation: symb_rotation
+	};
         var marker = new google.maps.Marker({
-	  position: robil,
+	  position: start_robil,
 	  map: map,
 	  title: 'Start Point',
 	  label: 'S'
 	});
 	movingMarker = new google.maps.Marker({
-	  position: robil,
+	  position: start_robil,
 	  map: map,
 	  title: 'RobilIcon',
-	  label: 'R'
+	  label: 'R',
+	  icon: bobcatOrientation //'Another_Bobcat_tracked_side.png'
       });  
-        
 	// Connecting to ROS
 	// -----------------
 	// If there is an error on the backend, an 'error' emit will be emitted.
@@ -107,12 +123,19 @@
 	  name: '/SENSORS/GPS',
 	  messageType: 'sensor_msgs/NavSatFix'
 	})
+	var init_rot_ins = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/INS',
+	  messageType: 'sensor_msgs/Imu'
+	})
 	init_pos_gps.subscribe(function(message) {
 	  console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
 	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
+	  console.log('myLatLng: ', myLatLng.toString());
 	  //robil.lat = message.latitude;
 	  //robil.lng = message.longitude;
 	  marker.setPosition(myLatLng);
+	  movingMarker.setPosition(myLatLng);
 	  map.panTo(myLatLng);
 	  var infowindow = new google.maps.InfoWindow({
 	  content: 'Start Here' + ' lat:' + message.latitude + ' lng: '+ message.longitude
@@ -121,7 +144,23 @@
 	  infowindow.open(map, marker);
 	  init_pos_gps.unsubscribe();
 	});
-	
+	init_rot_ins.subscribe(function(message) {
+	  console.log('Initial Rotation is: x:' + message.orientation.x + ' y:' + message.orientation.y + ' z:' + message.orientation.z + ' w:' + message.orientation.w);
+	  //convertQuaternionToRollPitchYaw(message.orientation.w, message.orientation.x,message.orientation.y,message.orientation.z);
+	  	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
+	  yaw_deg = -convertRadianToDegree(yaw);
+	  symb_rotation = yaw_deg;
+	  bobcatOrientation.rotation = yaw_deg;
+	  movingMarker.setIcon(bobcatOrientation);
+	  
+	  var infowindow = new google.maps.InfoWindow({
+	  content: 'Rotation' + ' yaw_deg:' + yaw_deg
+	  });
+	  //marker.addListener('click', function() {//});
+	  infowindow.open(map, movingMarker);
+	  init_rot_ins.unsubscribe();
+	});
 	
         var drawingManager = new google.maps.drawing.DrawingManager({
           drawingMode: google.maps.drawing.OverlayType.POLYLINE,
@@ -168,6 +207,7 @@
 	  console.log(coord.toString());
 	}
    }
+   
    function publishCoordinates() {
       
 	//Monitoring bobcat position
@@ -179,30 +219,63 @@
 	pos_gps.subscribe(function(message) {
 	  //console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
 	  var myLatLng = new google.maps.LatLng( message.latitude, message.longitude )
-	  console.log('myLatLng: ', myLatLng.toString());
+	  //console.log('myLatLng: ', myLatLng.toString());
 	  movingMarker.setPosition(myLatLng);
 	  map.panTo(myLatLng);
 	  
 	});
-	
-	//Simple move base
-	var simpleGoal = new ROSLIB.Topic({
+	var rot_ins = new ROSLIB.Topic({
+	  ros: ros,
+	  name: '/SENSORS/INS',
+	  messageType: 'sensor_msgs/Imu'
+	})
+	rot_ins.subscribe(function(message) {
+	  convertQuaternionToRollPitchYaw(message.orientation.x,message.orientation.y,message.orientation.z,message.orientation.w);
+	  //console.log("roll:"+roll+" pitch:" + pitch + " yaw:" + yaw);
+	  yaw_deg = -convertRadianToDegree(yaw);
+	  symb_rotation = yaw_deg;
+	  bobcatOrientation.rotation = yaw_deg;
+	  movingMarker.setIcon(bobcatOrientation);	
+	});
+	// Using Action Client
+	// ------------------
+	var moveBaseClient = new ROSLIB.ActionClient({
 	  ros : ros,
-	  name : '/move_base_simple/goal',
-	  messageType : 'geometry_msgs/PoseStamped'
+	  serverName : '/move_base',
+	  actionName : '/move_base_msgs/MoveBaseAction'
 	});
        
-        var sGoal = new ROSLIB.Message({
-	    header : {
-		seq : 0,
-		stamp : { 
-		  secs: 140,
-		  nsecs: 342000000
-		},
-		frame_id: 'WORLD'
-	    },
-	    pose:{}
+        var sGoal = new ROSLIB.Goal({
+	     actionClient : moveBaseClient,
+	     goalMessage : {
+	     	target_pose: {
+		  header:{},
+		  pose:{}
+		}
+	     }
 	});
+
+	  // Print out their output into the terminal.
+	sGoal.on('feedback', function(feedback) {
+	    //console.log('Feedback: lat: ' + feedback.base_position.pose.position.x + " lng: " + feedback.base_position.pose.position.y);
+	});
+	sGoal.on('result', function(result) {
+	//Result empty for this action
+          
+	});
+	sGoal.on('status', function(status) {
+	  //console.log('Status is: ' + status.text);
+	  if (status.status == 3){
+	    //stop the action in someway
+	    console.log("Done at:"+movingMarker.position.lat()+","+movingMarker.position.lng()); 
+	    start_robil.lat = movingMarker.position.lat();
+	    start_robil.lng = movingMarker.position.lng();
+	    sGoal.isFinished= true;
+	    pos_gps.unsubscribe();
+	    rot_ins.unsubscribe();
+	  }
+	});
+	
 
 	var latLngArray = polyline.getPath();
         var size = latLngArray.length;
@@ -210,10 +283,17 @@
         var coord;
         for (i=1; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
 	  coord = coords[i];
-	  console.log(coord.toString());
+	  console.log("Goal Lat Lng is:" + coord.toString());
 	  //twist.linear.x=coord.lat();
 	  //twist.linear.y=coord.lng();
 	  //cmdVel.publish(twist);
+	  var goalMarker = new google.maps.Marker({
+	    position: coord,
+	    map: map,
+	    title: 'Goal',
+	    label: 'G'
+	  });
+	  
 	  var vpose = {
 		header: {
 		  seq : 0,
@@ -236,15 +316,91 @@
 		      w: 1.0
 		    }
 		}
-	    };
-	  vpose.pose.position.x = coord.lat();
-	  vpose.pose.position.y = coord.lng();
-	  //path.poses[i].header = vpose.header;
-	  sGoal = vpose;
-	  //path.poses.pose.position.y = coord.lng();
+	  };
+//	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
+	  var OrigLatRadians = convertDegreeToRadian(movingMarker.position.lat());
+	  var tmp_x_km = -earthRadiusInKMs*Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(movingMarker.position.lng()));
+	  var tmp_y_km = earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
+	  var tmp_y=1000*tmp_x_km;
+	  var tmp_x=1000*tmp_y_km;
+//	  var tmp_x = 111190*(coord.lat() - movingMarker.position.lat());
+//	  var tmp_y = 111190*(coord.lng() - movingMarker.position.lng());
+	  var new_x, new_y;
+	  var newxy = {new_x, new_y};
+	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
+	  var teta = yaw;//+ Math.PI; //Math.PI/2 - yaw;
+	  console.log("Teta is:"+teta);
+	  newxy = rotateCoordinatesSystem(teta,tmp_x,tmp_y);
+	  vpose.pose.position.x = tmp_x;//newxy.n_x;
+	  vpose.pose.position.y = tmp_y;//newxy.n_y;
+	  //vpose.pose.position.x = 111190*(coord.lat() - movingMarker.position.lat());
+	  //vpose.pose.position.y = 111190*(coord.lng() - movingMarker.position.lng());
+	  sGoal.goalMessage.goal.target_pose = vpose;
+	  var infoGoal = new google.maps.InfoWindow({
+	      content: 'Goal' + ' x:' + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m'
+	  });
+	  //marker.addListener('click', function() {//});
+	  infoGoal.open(map, goalMarker);
+	  console.log("Goal is: x:" + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m');
         }
-        simpleGoal.publish(sGoal);
+        // Send the goal to the action server.
+	sGoal.send();
        }
+   function convertQuaternionToRollPitchYaw(x,y,z,w){
+   //REF: middle of http://answers.unity3d.com/questions/416169/finding-pitchrollyaw-from-quaternions.html
+   // Here same result more or less than what I see in
+   // https://github.com/iosp/robil2/blob/master/src/Simulation/live_bobcat/worlds/bobcat_tracked_static_arm_worlds/bobcat_tracked_static_arm_TestWorld4.world
+   /*
+   <include>
+            <uri>model://bobcat_tracked_static_arm</uri>
+            <name>Sahar</name>
+            <pose>40 10 1.8098 0 0 1.45844</pose>
+        </include>
+        */
+       roll = Math.atan2(2*y*w+2*x*z, 1 - 2*y*y - 2*z*z);
+        pitch = Math.atan2(2*x*w + 2*y*z, 1 - 2*x*x - 2*z*z);
+        yaw = Math.asin(2*x*y + 2*z*w);
+   //REF: https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+ /*              
+        //roll x-axis clockwise rotation
+        var t0 = 2.0*(w*x+y*z);
+        var t1 = 1.0 - 2.0*(x*x+y*y);
+        roll = Math.atan2(t0,t1);
+        
+        //pith y-axis clockwise rotation
+        var t2 = 2.0*(w*y -z*x);
+        if (t2 > 1.0) t2=1.0;
+        if (t2 < -1.0)t2=-1.0;
+        pitch = Math.asin(t2);
+        
+        //yaw z-axis clockwise rotation
+        var t3 = 2.0*(w*z+x*y);
+        var t4 = 1.0 - 2.0*(y*y + z*z);
+        yaw = Math.atan2(t3,t4);*/
+        
+    //REF:http://sunday-lab.blogspot.co.il/2008/04/get-pitch-yaw-roll-from-quaternion.html
+    /*    pitch = Math.atan2(2*(y*z + w*x), w*w - x*x - y*y + z*z);
+        yaw = Math.asin(-2*(x*z - w*y));
+        roll = Math.atan2(2*(x*y + w*z), w*w + x*x - y*y - z*z);*/
+   }
+   function convertRadianToDegree(rad){
+        var rad_deg = rad*180/Math.PI;
+	if (rad_deg < 0) rad_deg += 360.0;
+	//console.log("yaw_degrees:"+rad_deg);
+	return rad_deg;
+   }
+   function convertDegreeToRadian(deg){
+	var rad = Math.PI*deg/180
+	if (rad < 0) rad +=2*Math.PI;
+	return rad;
+   }
+   function rotateCoordinatesSystem(rad,x,y){
+   //REF: http://www.continuummechanics.org/coordxforms.html
+	var n_x = x*Math.cos(rad) + y*Math.sin(rad);
+	var n_y = -x*Math.sin(rad) + y*Math.cos(rad);
+	var nxy = {n_x, n_y};
+	return nxy;
+    }
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
          async defer></script>
