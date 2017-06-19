@@ -49,8 +49,10 @@
       var polyline=null;
       var map;
       var ros = new ROSLIB.Ros();
-      var counter = 0;      
+      // startMarker is the last position of the bobcat
+      // movingMarker is the arrow for the bobcat
       var movingMarker, startMarker;
+      // coordinates of the bobcat relatively to the North (WORLD)
       var robilZero = {lat: 32.009257, lng: 34.9103223};
       var start_orientation= {roll:0, pitch:0, yaw:0};
       var yaw_deg;
@@ -59,6 +61,8 @@
       var bobcatOrientation;
       //var myLatLng = robilZero;
       var start_robil = robilZero;
+      var deltaX, deltaY;
+      var robilPosition;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: robilZero,
@@ -120,6 +124,27 @@
 	ros.connect('ws://localhost:9090');
 	
 	//get initial position of Robil
+	// TF Client
+	// ---------
+	var tfClient = new ROSLIB.TFClient({
+	  ros : ros,
+	  fixedFrame : 'WORLD',
+	  angularThres : 0.01,
+	  transThres : 0.01
+	});
+
+	// Subscribe to ODOM.
+	tfClient.subscribe('ODOM', function(tf) {	      
+	  console.log(tf);
+	  deltaX = tf.translation.x;
+	  deltaY = tf.translation.y;
+	  tfClient.unsubscribe('ODOM');
+	  getRobilOrigin(deltaX, deltaY, robilPosition.lat(), robilPosition.lng());
+	      
+	});
+	//while (tfOn == false){
+	    //do nothing
+	//}
 	var init_pos_gps = new ROSLIB.Topic({
 	  ros: ros,
 	  name: '/SENSORS/GPS',
@@ -128,16 +153,19 @@
 
 	init_pos_gps.subscribe(function(message) {
 	  console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
-	  robilZero = new google.maps.LatLng( message.latitude, message.longitude )
-	  console.log('robilZero: ', robilZero.toString());
+	  robilPosition = new google.maps.LatLng( message.latitude, message.longitude )
+	  console.log('robilPosition: ', robilPosition.toString());
+	
+	//  tfClient.processFeedback(tf);
+	//  getRobilOrigin(deltaX, deltaY, robilPosition.lat(), robilPosition.lng());
 	  //robil.lat = message.latitude;
 	  //robil.lng = message.longitude;
-	  startMarker.setPosition(robilZero);
-	  movingMarker.setPosition(robilZero);
-	  map.panTo(robilZero);
+	  startMarker.setPosition(robilPosition);
+	  movingMarker.setPosition(robilPosition);
+	  map.panTo(robilPosition);
 	  
 	  var infowindow = new google.maps.InfoWindow({
-	  content: 'Start' + ' lat:' + robilZero.lat() + ' lng: '+ robilZero.lng()
+	  content: 'Start' + ' lat:' + robilPosition.lat() + ' lng: '+ robilPosition.lng()
 	  });
 	  //marker.addListener('click', function() {//});
 	  infowindow.open(map, startMarker);
@@ -168,7 +196,7 @@
 	  infowindow.open(map, movingMarker);
 	  init_rot_ins.unsubscribe();
 	});
-	
+// 	
         var drawingManager = new google.maps.drawing.DrawingManager({
           drawingMode: google.maps.drawing.OverlayType.POLYLINE,
           drawingControl: true,
@@ -294,6 +322,7 @@
 	    sGoal.isFinished= true;
 	    pos_gps.unsubscribe();
 	    rot_ins.unsubscribe();
+	    sGoal.cancel();
 	  }
 	});
 	
@@ -346,6 +375,8 @@
 	  };
 	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
 	  var OrigLatRadians = convertDegreeToRadian(robilZero.lat());
+	  
+	  
 	  var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng()));
 	  var tmp_x_km =  earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
 	  
@@ -371,7 +402,16 @@
 	sGoal.send();
        }
  
- 
+   function getRobilOrigin(deltaX, deltaY, actLat, actLng){
+        var lat0 = actLat - deltaX/(1000*earthRadiusInKMs);
+        var lng0 = (deltaY/(1000*earthRadiusInKMs*Math.cos(convertDegreeToRadian(lat0)))) + actLng;
+        
+        
+        robilZero = new google.maps.LatLng(lat0, lng0);
+        console.log('Robil Origin at:' + robilZero.toString());
+        //robilZero.lat = lat0;
+        //robilZero.lng = lng0;
+   }
    function convertRadianToDegree(rad){
         var rad_deg = rad*180/Math.PI;
 	if (rad_deg < 0) rad_deg += 360.0;
