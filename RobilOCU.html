@@ -53,7 +53,7 @@
       // movingMarker is the arrow for the bobcat
       var movingMarker, startMarker;
       // coordinates of the bobcat relatively to the North (WORLD)
-      var robilZero = {lat: 32.009257, lng: 34.9103223};
+      var robilZero = {lat: 32.01113995444289, lng: 34.91199996669593};
       var start_orientation= {roll:0, pitch:0, yaw:0};
       var yaw_deg;
       var symb_rotation;
@@ -222,7 +222,8 @@
           polyline.setEditable(true);
           // Searching within the polyline.
           //displayCoordinates();     
-          publishCoordinates();
+          //publishCoordinates();
+          buildAndSendMission();
           // Make sure the path is recomputed if the poly is changed.
           //polyline.getPath().addListener('set_at', displayCoordinates);
           //polyline.getPath().addListener('insert_at', displayCoordinates);
@@ -246,6 +247,122 @@
 	}
    }
    
+   function buildAndSendMission() {
+	var navTaskTopic = new ROSLIB.Topic({
+	  ros : ros,
+	  name : '/OCU/SMME/NavigationTask',
+	  messageType : 'robil_msgs/AssignNavTask'
+     	});
+	
+	var step = {
+	  header: {
+	    seq : 0,
+	    stamp : { 
+	      secs: 140,
+	      nsecs: 342000000
+	    },
+	    frame_id: ''
+	  },
+	  child_frame_id: '',
+	  pose: {
+	    pose : {
+	      position : {
+		  x: 0.0,
+		  y: 0.0,
+		  z: 0.0
+	      },
+	      orientation:{
+		  x: 0.0,
+		  y: 0.0,
+		  z: 0.0,
+		  w: 1.0
+	      }
+	    },
+	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	   },
+	   twist: {
+	    twist: {
+	      linear: {
+		x: 3.0,
+		y: 0.0,
+		z: 0.0
+	      },
+	      angular: { 
+		x: 0.0,
+		y: 0.0,
+		z: 0.0
+	      }
+	    },
+	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+	   }
+	  };
+	  
+	  var navTaskMsg = new ROSLIB.Message({
+	     header: {
+	      seq: 1,
+	      stamp: 	{
+		secs: 0,
+		nsecs: 0
+	      },
+	      frame_id: '',
+	     },
+	     task_id: '111',
+	     task_description: '',
+	     heading_at_last_point: 0.0,
+	     waypoints: []
+	  });
+
+	  var missionPlanTopic = new ROSLIB.Topic({
+	    ros : ros,
+	    name : '/OCU/SMME/MissionPlan',
+	    messageType : 'robil_msgs/AssignMission'
+	  });
+	  
+	  var missionMsg = new ROSLIB.Message({
+	     header: {
+	      seq: 1,
+	      stamp: 	{
+		secs: 0,
+		nsecs: 0
+	      },
+	      frame_id: '',
+	     },
+	     mission_id: '111',
+	     mission_description: '',
+	     tasks:[]
+	  });
+	  var taskId = {task_id: 111};
+          missionMsg.tasks[0] = {task_id: '111'};
+	var latLngArray = polyline.getPath();
+        var size = latLngArray.length;
+        var coords = latLngArray.getArray();
+        var coord;
+        for (i=0; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
+	  coord = coords[i];
+	  console.log("Lat Lng "+i+ " is:" + coord.toString() + "Array with:"+size+" coords");
+ 
+	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
+	  //var OrigLatRadians = convertDegreeToRadian(robilZero.lat);
+	  var OrigLatRadians = convertDegreeToRadian(robilZero.lat());
+	  
+	  var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng()));	  
+	  //var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng));
+	  var tmp_x_km =  earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
+	  
+	  //Don not invert coordinates
+	  var tmp_x=1000*tmp_x_km;
+	  var tmp_y=1000*tmp_y_km;
+
+	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
+
+	  step.pose.pose.position.x = tmp_x;
+	  step.pose.pose.position.y = tmp_y;
+	  navTaskMsg.waypoints[i] = step;
+        }
+        navTaskTopic.publish(navTaskMsg);
+        missionPlanTopic.publish(missionMsg);
+   }
+   
    function publishCoordinates() {
       
 	//Monitoring bobcat position
@@ -255,9 +372,9 @@
 	  messageType: 'sensor_msgs/NavSatFix'
 	})
 	pos_gps.subscribe(function(message) {
-	  //console.log('Initial Position is: lat:' + message.latitude + ' lng:' + message.longitude);
-	  var robilCurPosition = new google.maps.LatLng( message.latitude, message.longitude )
-	  //console.log('myLatLng: ', myLatLng.toString());
+	//console.log('Robil Current Position is: lat:' + message.latitude + ' lng:' + message.longitude);
+	var robilCurPosition = new google.maps.LatLng( message.latitude, message.longitude )
+	 // console.log('robilCurPosition: ', robilCurPosition.toString());
 	  movingMarker.setPosition(robilCurPosition);
 	  map.panTo(robilCurPosition);
 	  
@@ -316,13 +433,13 @@
 	    start_robil.lng = movingMarker.position.lng();
 	    startMarker.setPosition(start_robil);
 	    map.panTo(start_robil);
-	    
-	    //marker.addListener('click', function() {//});
-	    //infowindow.open(map, startMarker);
+
 	    sGoal.isFinished= true;
+	    sGoal.result = "Success";
 	    pos_gps.unsubscribe();
 	    rot_ins.unsubscribe();
 	    sGoal.cancel();
+	    
 	  }
 	});
 	
@@ -374,10 +491,11 @@
 		}
 	  };
 	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
+	  //var OrigLatRadians = convertDegreeToRadian(robilZero.lat);
 	  var OrigLatRadians = convertDegreeToRadian(robilZero.lat());
 	  
-	  
-	  var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng()));
+	  var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng()));	  
+	  //var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng));
 	  var tmp_x_km =  earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
 	  
 	  //Don not invert coordinates
@@ -411,6 +529,14 @@
         console.log('Robil Origin at:' + robilZero.toString());
         //robilZero.lat = lat0;
         //robilZero.lng = lng0;
+        console.log('Robil Origin at: lat:' + lat0 + ' lng:' + lng0);
+
+   }
+   function getRobilOriginSmart(deltaX, deltaY, actLat, actLng){
+        var  deg2rad = 0.017453292;
+        var RadEq = 1000*earthRadiusInKMs;
+        var Excen = (1.0/298.257);
+        
    }
    function convertRadianToDegree(rad){
         var rad_deg = rad*180/Math.PI;
