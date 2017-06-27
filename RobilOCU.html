@@ -63,6 +63,10 @@
       var start_robil = robilZero;
       var deltaX, deltaY;
       var robilPosition;
+      //Mission global management
+      var missionStateRead = false;
+      var missionIsRunning = false;
+      var missionIsFinished = false;
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: robilZero,
@@ -224,24 +228,29 @@
           //displayCoordinates();     
           //publishCoordinates();
           //monitorDecisionMakingEvents();
-          buildAndSendMission();
-          var interval=1000;
-          setTimeout(function() {
-	      activateMissionStateService();
-	      }, (interval));
+          executeMission();
+//           var interval=1000;
+//           setTimeout(function() {
+// 	      activateMissionStateService();
+// 	      }, (interval));
           
           // Make sure the path is recomputed if the poly is changed.
           //polyline.getPath().addListener('set_at', displayCoordinates);
           //polyline.getPath().addListener('insert_at', displayCoordinates);
-          polyline.getPath().addListener('set_at', buildAndSendMission);
-          polyline.getPath().addListener('insert_at', buildAndSendMission);
+          polyline.getPath().addListener('set_at', executeMission);
+          polyline.getPath().addListener('insert_at', executeMission);
           });
           
         drawingManager.setMap(map);
         monitorPositionAndOrientation();
    } 
    
-
+   function executeMission() {
+      buildAndSendMission();
+      console.log("Build and send mission completed");
+      missionStateRead = true;
+      monitorMissionState(1000);
+   }
    
    function buildAndSendMission() {
 	var navTaskTopic = new ROSLIB.Topic({
@@ -250,48 +259,6 @@
 	  messageType : 'robil_msgs/AssignNavTask'
      	});
 	
-	var step = {
-	  header: {
-	    seq : 0,
-	    stamp : { 
-	      secs: 140,
-	      nsecs: 342000000
-	    },
-	    frame_id: ''
-	  },
-	  child_frame_id: '',
-	  pose: {
-	    pose : {
-	      position : {
-		  x: 0.0,
-		  y: 0.0,
-		  z: 0.0
-	      },
-	      orientation:{
-		  x: 0.0,
-		  y: 0.0,
-		  z: 0.0,
-		  w: 1.0
-	      }
-	    },
-	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-	   },
-	   twist: {
-	    twist: {
-	      linear: {
-		x: 3.0,
-		y: 0.0,
-		z: 0.0
-	      },
-	      angular: { 
-		x: 0.0,
-		y: 0.0,
-		z: 0.0
-	      }
-	    },
-	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-	   }
-	  };
 	  
 	  var navTaskMsg = new ROSLIB.Message({
 	     header: {
@@ -350,11 +317,12 @@
 	  var tmp_y=1000*tmp_y_km;
 
 	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
-
+          var step = new Object();
+          createStep(step);
 	  step.pose.pose.position.x = tmp_x;
 	  step.pose.pose.position.y = tmp_y;
-	  var new_step = step;
-	  navTaskMsg.waypoints.push(new_step);
+	  
+	  navTaskMsg.waypoints.push(step);
 	  //navTaskMsg.waypoints[i] = step;
         }
         navTaskTopic.publish(navTaskMsg);
@@ -376,20 +344,62 @@
 	  
       });
 
+      if (missionStateRead == false) {
+	clearInterval(pollMissionState);
+      }
+      ourMission = new curMissionState(111);
+      
       missionStateService.callService(request, function(result) {
 	  console.log('Result for service call on ' + result.states);
-	  var decisionMakingTopic = new ROSLIB.Topic({
-	    ros : ros,
-	    name : '/decision_making/events',
-	    messageType : 'std_msgs/String'
-	  });
-	  var ActivateMissionMsg = new ROSLIB.Message({
-	     data: "/mission/111/StartMission"
-	  });
-	  decisionMakingTopic.publish(ActivateMissionMsg);
+	  parseMissionStateFromString(result.states, ourMission);
+	  console.log("current state "+ourMission.missionState.ms + " missionStateRead="+missionStateRead);
+	  switch (ourMission.missionState.ms){
+	      case "pending":
+	          missionStateRead = true;
+	          missionIsRunning = false;
+		  missionIsFinished = false;
+		  var decisionMakingTopic = new ROSLIB.Topic({
+		    ros : ros,
+		    name : '/decision_making/events',
+		    messageType : 'std_msgs/String'
+		  });
+		  var ActivateMissionMsg = new ROSLIB.Message({
+		    data: "/mission/111/StartMission"
+		  });
+		  decisionMakingTopic.publish(ActivateMissionMsg);
+		  break;
+	      case "loaded": //wait for state to become pending
+		  missionStateRead = true;
+		  missionIsRunning = false;
+		  missionIsFinished = false;
+		  break;
+	      case "spooling":
+		  missionStateRead = true;
+	          missionIsRunning = true;
+	          missionIsFinished = false;
+	          break;
+	      case "finished":
+		  missionStateRead = false;
+	          missionIsRunning = false;
+	          missionIsFinished = true;
+	          break;
+	      default: console.log("Interesting state "+ourMission.missionState.ms);
+	  }
+      }, function(error) {
+	console.log("Failed " + error);
+	missionStateRead = true;
       });
    }
-   
+   function monitorMissionState(interval){
+    console.log("monitorMissionState called with interval:"+interval);
+    if (missionStateRead == true){      
+       pollMissionState = setInterval(function() {
+	  activateMissionStateService();
+	  }, (interval));
+    } else {
+	clearInterval(pollMissionState);
+    }
+   }
    function monitorDecisionMakingEvents () {
     	  var decisionMakingTopic = new ROSLIB.Topic({
 	    ros : ros,
@@ -600,7 +610,19 @@
         // Send the goal to the action server.
 	sGoal.send();
        }
- 
+   function curMissionState(mid) {
+	  this.ntasks = { id: mid, wp: 0 };
+	  this.mtasks = "";
+	  this.mission = { id: mid, tsk:1};
+	  this.missionState = { id: mid, ms:"loading", ti:0, ts:"pending"};
+   }
+	  
+   function parseMissionStateFromString(inputStr, curMission) {
+	var pos = inputStr.search("ms=");
+	var sval = inputStr.indexOf(":",pos);
+	curMission.missionState.ms = inputStr.slice(pos+3, sval);
+   }
+   
    function getRobilOrigin(deltaX, deltaY, actLat, actLng){
         var lat0 = actLat - deltaX/(1000*earthRadiusInKMs);
         var lng0 = (deltaY/(1000*earthRadiusInKMs*Math.cos(convertDegreeToRadian(lat0)))) + actLng;
@@ -630,7 +652,93 @@
 	if (rad < 0) rad +=2*Math.PI;
 	return rad;
    }
+   function createStep(new_step){
+   
+      new_step.header= {
+	      seq : 0,
+	      stamp : { 
+		secs: 140,
+		nsecs: 342000000
+	      },
+	      frame_id: ''
+	    };
+      new_step.child_frame_id= '';
+      new_step.pose = {
+	      pose : {
+		position : {
+		  x: 0.0,
+		  y: 0.0,
+		  z: 0.0
+		},
+		orientation:{
+		  x: 0.0,
+		  y: 0.0,
+		  z: 0.0,
+		  w: 1.0
+		}
+	      },
+	      covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	    };
+      new_step.twist={
+	      twist: {
+		linear: {
+		  x: 3.0,
+		  y: 0.0,
+		  z: 0.0
+		},
+		angular: { 
+		  x: 0.0,
+		  y: 0.0,
+		  z: 0.0
+		}
+	      },
+	      covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+	    };
+//     	new_step = {
+// 	  header: {
+// 	    seq : 0,
+// 	    stamp : { 
+// 	      secs: 140,
+// 	      nsecs: 342000000
+// 	    },
+// 	    frame_id: ''
+// 	  },
+// 	  child_frame_id: '',
+// 	  pose: {
+// 	    pose : {
+// 	      position : {
+// 		  x: 0.0,
+// 		  y: 0.0,
+// 		  z: 0.0
+// 	      },
+// 	      orientation:{
+// 		  x: 0.0,
+// 		  y: 0.0,
+// 		  z: 0.0,
+// 		  w: 1.0
+// 	      }
+// 	    },
+// 	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+// 	   },
+// 	   twist: {
+// 	    twist: {
+// 	      linear: {
+// 		x: 3.0,
+// 		y: 0.0,
+// 		z: 0.0
+// 	      },
+// 	      angular: { 
+// 		x: 0.0,
+// 		y: 0.0,
+// 		z: 0.0
+// 	      }
+// 	    },
+// 	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+// 	   }
+// 	  };
 
+  }
+   
     </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAofrSgojdpUBPhB8HfT8opr0wqt6SGwrc&v=3&libraries=drawing&callback=initMap"
          async defer></script>
