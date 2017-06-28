@@ -8,7 +8,11 @@
       /* Always set the map height explicitly to define the size of the div
        * element that contains the map. */
       #map {
+        bottom:0px;
         height: 100%;
+        left: 362px;
+        position: absolute;
+        right: 0px;
       }
       /* Optional: Makes the sample page fill the window. */
       html, body {
@@ -16,7 +20,7 @@
         margin: 0;
         padding: 0;
       }
-      #toggle-drawing {
+      #form {
         width: 27%;
         position: relative;
         margin-left: 10px;
@@ -24,21 +28,29 @@
     </style>
   </head>
   <body>
-    <div id="map"></div>
+  <div class="container">
+    <form id="frm1" action="/action_page.php">
+      Mission ID: <input type="text" name="midname" value="N/A"><br>
+      Mission Status: <input type="text" name="msname" value="N/A"><br><br>  
+   </form> 
     <div id="statusIndicator">
-    <p id="connecting">
-      Connecting to rosbridge...
-    </p>
-    <p id="connected" style="color:#00D600; display:none">
-      Connected
-    </p>
-    <p id="error" style="color:#FF0000; display:none">
-      Error in the backend!
-    </p>
-    <p id="closed" style="display:none">
-      Connection closed.
-    </p>
+	<p id="rosBridgeTitle"> ROS Bridge Status:
+	</p>
+	<p id="connecting">
+	    Connecting to rosbridge...
+	</p>
+	<p id="connected" style="color:#00D600; display:none">
+	  Connected
+	</p>
+	<p id="error" style="color:#FF0000; display:none">
+	  Error in the backend!
+	</p>
+	<p id="closed" style="display:none">
+	  Connection closed.
+	</p>
     </div>
+    <div id="map"></div>
+   </div>
     <script src="http://cdn.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
     <script src="/home/michele/roslibjs/build/roslib.js"></script>
 
@@ -68,6 +80,9 @@
       var missionStateRead = false;
       var missionIsRunning = false;
       var missionIsFinished = false;
+      var reportMissionState = false;
+      var ourMission;
+      
       function initMap() {
         map = new google.maps.Map(document.getElementById('map'), {
           center: robilZero,
@@ -201,7 +216,9 @@
 	  infowindow.open(map, movingMarker);
 	  init_rot_ins.unsubscribe();
 	});
-// 	
+//
+	getNextMissionId();
+	console.log("NextMissionId="+currMissionId);
         var drawingManager = new google.maps.drawing.DrawingManager({
           drawingMode: google.maps.drawing.OverlayType.POLYLINE,
           drawingControl: true,
@@ -246,14 +263,14 @@
         monitorPositionAndOrientation();
    } 
    
-   function executeMission() {
-      buildAndSendMission();
-      console.log("Build and send mission completed");
-      missionStateRead = true;
-      monitorMissionState(1000);
-   }
+      function executeMission() {
+	buildAndSendMission();
+	console.log("Build and send mission completed");
+	missionStateRead = true;
+	monitorMissionState(1000);
+      }
    
-   function buildAndSendMission() {
+      function buildAndSendMission() {
 	var navTaskTopic = new ROSLIB.Topic({
 	  ros : ros,
 	  name : '/OCU/SMME/NavigationTask',
@@ -261,20 +278,20 @@
      	});
 	
 	  
-	  var navTaskMsg = new ROSLIB.Message({
-	     header: {
-	      seq: 1,
-	      stamp: 	{
-		secs: 0,
-		nsecs: 0
-	      },
-	      frame_id: '',
-	     },
-	     task_id: currMissionId.toString(),
-	     task_description: '',
-	     heading_at_last_point: 0.0,
-	     waypoints: []
-	  });
+	var navTaskMsg = new ROSLIB.Message({
+	  header: {
+	    seq: 1,
+	    stamp: 	{
+	      secs: 0,
+	      nsecs: 0
+	    },
+	    frame_id: '',
+	  },
+	  task_id: currMissionId.toString(),
+	  task_description: '',
+	  heading_at_last_point: 0.0,
+	  waypoints: []
+	});
 
 	  var missionPlanTopic = new ROSLIB.Topic({
 	    ros : ros,
@@ -333,7 +350,7 @@
         
    }
 
-   function deleteMission(mid) {
+      function deleteMission(mid) {
       	  var decisionMakingTopic = new ROSLIB.Topic({
 	    ros : ros,
 	    name : '/decision_making/events',
@@ -343,15 +360,15 @@
 	     data: "/mission/"+currMissionId.toString()+"/DeleteMission"
 	  });
 	  decisionMakingTopic.publish(DeleteMissionMsg);    
-   }
+      }
    
-   function activateMissionStateService() {
+      function activateMissionStateService() {
     
-      var missionStateService = new ROSLIB.Service({
-	  ros : ros,
-	  name : '/mission_state',
-	  serviceType : 'robil_msgs/MissionState'
-      });
+	var missionStateService = new ROSLIB.Service({
+	    ros : ros,
+	    name : '/mission_state',
+	    serviceType : 'robil_msgs/MissionState'
+	});
 
       var request = new ROSLIB.ServiceRequest({
 	  
@@ -359,12 +376,17 @@
 
       if (missionStateRead == false) {
 	clearInterval(pollMissionState);
+	return;
       }
       ourMission = new curMissionState(currMissionId.toString());
       
       missionStateService.callService(request, function(result) {
 	  console.log('Result for service call on ' + result.states);
+	  reportMissionState = true;
+	  displayCurrentMissionId();
+	  
 	  parseMissionStateFromString(result.states, ourMission);
+	  displayCurrentMissionState();
 	  console.log("current state "+ourMission.missionState.ms + " missionStateRead="+missionStateRead);
 	  switch (ourMission.missionState.ms){
 	      case "pending":
@@ -397,7 +419,8 @@
 	          missionIsFinished = true;
 	          currMissionId++;
 	          break;
-	      default: console.log("Interesting state "+ourMission.missionState.ms);
+	      default: ourMission.missionState.ms = "N/A";
+	      console.log("Interesting state "+ourMission.missionState.ms);
 	  }
       }, function(error) {
 	console.log("Failed " + error);
@@ -469,11 +492,48 @@
 	});
    }
    
+   function getNextMissionId() {
+      	var missionStateService = new ROSLIB.Service({
+	    ros : ros,
+	    name : '/mission_state',
+	    serviceType : 'robil_msgs/MissionState'
+	});
+
+      var request = new ROSLIB.ServiceRequest({
+	  
+      });
+      
+       missionStateService.callService(request, function(result) {
+	  console.log('Result for service call on ' + result.states);
+	 var pos = result.states.lastIndexOf("{ms=finished");
+	 if (pos==-1){
+	  currMissionId = 111;
+	 }
+	 else {
+	  var res = result.states.slice(0,pos);
+	  var res2 = res.lastIndexOf(" ");
+	  if (res2 == -1){
+	    console.log("Something is wrong in the kingdom of Denmark!");
+	     currMissionId = 111;
+	  }
+	  else {
+	    var numbInString = res.slice(res2-1,pos);
+	    
+	    currMissionId = parseInt(numbInString)+1;
+	    console.log("numbInString:"+numbInString+" currMissionId="+currMissionId);
+	  }
+	 } 
+      }, function(error) {
+	console.log("Failed " + error);
+	currMissionId = 111;
+      });
+   }
+
    function curMissionState(mid) {
 	  this.ntasks = { id: mid, wp: 0 };
 	  this.mtasks = "";
 	  this.mission = { id: mid, tsk:1};
-	  this.missionState = { id: mid, ms:"loading", ti:0, ts:"pending"};
+	  this.missionState = { id: mid, ms:"N/A", ti:0, ts:"pending"};
    }
 	  
    function parseMissionStateFromString(inputStr, curMission) {
@@ -482,6 +542,26 @@
 	var midl = currMissionId.toString().length;
 	var addlength = midl+4;
 	curMission.missionState.ms = inputStr.slice(pos+addlength, sval);
+	if (curMission.missionState.ms == ""){
+	  curMissionState.ms = "N/A";
+	}
+   }
+   
+   function displayCurrentMissionState(){
+      var elem = document.forms["frm1"];  
+      if  (reportMissionState) {
+	  elem.elements[1].value = ourMission.missionState.ms;
+      }
+      else elem.elements[1].value = "N/A";
+   }
+   
+   function displayCurrentMissionId(){
+      var elem = document.forms["frm1"];
+     // var elem = document.getElementById("midname");   
+      if  (reportMissionState) {
+	  elem.elements[0].value = ourMission.missionState.id;
+      }
+      else elem.elements[0].value  = "N/A";      
    }
    
    function getRobilOrigin(deltaX, deltaY, actLat, actLng){
@@ -555,48 +635,6 @@
 	      },
 	      covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 	    };
-//     	new_step = {
-// 	  header: {
-// 	    seq : 0,
-// 	    stamp : { 
-// 	      secs: 140,
-// 	      nsecs: 342000000
-// 	    },
-// 	    frame_id: ''
-// 	  },
-// 	  child_frame_id: '',
-// 	  pose: {
-// 	    pose : {
-// 	      position : {
-// 		  x: 0.0,
-// 		  y: 0.0,
-// 		  z: 0.0
-// 	      },
-// 	      orientation:{
-// 		  x: 0.0,
-// 		  y: 0.0,
-// 		  z: 0.0,
-// 		  w: 1.0
-// 	      }
-// 	    },
-// 	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-// 	   },
-// 	   twist: {
-// 	    twist: {
-// 	      linear: {
-// 		x: 3.0,
-// 		y: 0.0,
-// 		z: 0.0
-// 	      },
-// 	      angular: { 
-// 		x: 0.0,
-// 		y: 0.0,
-// 		z: 0.0
-// 	      }
-// 	    },
-// 	    covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-// 	   }
-// 	  };
 
   }
    
