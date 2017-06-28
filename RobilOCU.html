@@ -64,6 +64,7 @@
       var deltaX, deltaY;
       var robilPosition;
       //Mission global management
+      var currMissionId = 111;
       var missionStateRead = false;
       var missionIsRunning = false;
       var missionIsFinished = false;
@@ -269,7 +270,7 @@
 	      },
 	      frame_id: '',
 	     },
-	     task_id: '111',
+	     task_id: currMissionId.toString(),
 	     task_description: '',
 	     heading_at_last_point: 0.0,
 	     waypoints: []
@@ -290,12 +291,12 @@
 	      },
 	      frame_id: '',
 	     },
-	     mission_id: '111',
+	     mission_id: currMissionId.toString(),
 	     mission_description: '',
 	     tasks:[]
 	  });
-	  var taskId = {task_id: 111};
-          missionMsg.tasks[0] = {task_id: '111'};
+	  var taskId = {task_id: currMissionId.toString()};
+          missionMsg.tasks[0] = {task_id: currMissionId.toString()};
 	var latLngArray = polyline.getPath();
         var size = latLngArray.length;
         var coords = latLngArray.getArray();
@@ -332,6 +333,18 @@
         
    }
 
+   function deleteMission(mid) {
+      	  var decisionMakingTopic = new ROSLIB.Topic({
+	    ros : ros,
+	    name : '/decision_making/events',
+	    messageType : 'std_msgs/String'
+	  });
+	  var DeleteMissionMsg = new ROSLIB.Message({
+	     data: "/mission/"+currMissionId.toString()+"/DeleteMission"
+	  });
+	  decisionMakingTopic.publish(DeleteMissionMsg);    
+   }
+   
    function activateMissionStateService() {
     
       var missionStateService = new ROSLIB.Service({
@@ -347,7 +360,7 @@
       if (missionStateRead == false) {
 	clearInterval(pollMissionState);
       }
-      ourMission = new curMissionState(111);
+      ourMission = new curMissionState(currMissionId.toString());
       
       missionStateService.callService(request, function(result) {
 	  console.log('Result for service call on ' + result.states);
@@ -364,7 +377,7 @@
 		    messageType : 'std_msgs/String'
 		  });
 		  var ActivateMissionMsg = new ROSLIB.Message({
-		    data: "/mission/111/StartMission"
+		    data: "/mission/"+currMissionId.toString()+"/StartMission"
 		  });
 		  decisionMakingTopic.publish(ActivateMissionMsg);
 		  break;
@@ -382,6 +395,7 @@
 		  missionStateRead = false;
 	          missionIsRunning = false;
 	          missionIsFinished = true;
+	          currMissionId++;
 	          break;
 	      default: console.log("Interesting state "+ourMission.missionState.ms);
 	  }
@@ -407,14 +421,14 @@
 	    messageType : 'std_msgs/String'
 	  });
 	  var ActivateMissionMsg = new ROSLIB.Message({
-	     data: "/mission/111/StartMission"
+	     data: "/mission/"+currMissionId.toString()+"/StartMission"
 	  });
 	  decisionMakingTopic.subscribe(function(message) {
-	    if (message.data == "/mission/111/MissionPending/MissionPending/0") {
+	    if (message.data == "/mission/"+currMissionId.toString()+"/MissionPending/MissionPending/0") {
 		//send start mission
 		decisionMakingTopic.publish(ActivateMissionMsg);
 	    }
-	    if (message.data == "/mission/111/TaskActive/TaskActive/TaskSpooling/TaskSpooling/0") {
+	    if (message.data == "/mission/"+currMissionId.toString()+"/TaskActive/TaskActive/TaskSpooling/TaskSpooling/0") {
 		//Everything is OK
 	    }
 	  });
@@ -454,162 +468,7 @@
 	  
 	});
    }
-   function publishCoordinates() {
-      
-	//Monitoring bobcat position
-	var pos_gps = new ROSLIB.Topic({
-	  ros: ros,
-	  name: '/SENSORS/GPS',
-	  messageType: 'sensor_msgs/NavSatFix'
-	})
-	pos_gps.subscribe(function(message) {
-	//console.log('Robil Current Position is: lat:' + message.latitude + ' lng:' + message.longitude);
-	var robilCurPosition = new google.maps.LatLng( message.latitude, message.longitude )
-	 // console.log('robilCurPosition: ', robilCurPosition.toString());
-	  movingMarker.setPosition(robilCurPosition);
-	  map.panTo(robilCurPosition);
-	  
-	});
-
-	var rot_ins = new ROSLIB.Topic({
-	  ros: ros,
-	  name: '/LOC_RolPithchYow',
-	  messageType: 'geometry_msgs/Vector3'
-	})
-	
-	rot_ins.subscribe(function(message) {
-	  //console.log('Rotation is: (roll) x:' + message.x + ' (pitch) y:' + message.y + ' (yaw) z:' + message.z );
-	  start_orientation.roll  = message.x;
-	  start_orientation.pitch = message.y;
-	  start_orientation.yaw   = message.z;
-	  yaw_deg = -convertRadianToDegree(start_orientation.yaw);
-	  //console.log('yaw_deg:'+yaw_deg);
-	  symb_rotation = yaw_deg;
-	  bobcatOrientation.rotation = yaw_deg;
-	  movingMarker.setIcon(bobcatOrientation);
-	  
-	});
-	// Using Action Client
-	// ------------------
-	var moveBaseClient = new ROSLIB.ActionClient({
-	  ros : ros,
-	  serverName : '/move_base',
-	  actionName : '/move_base_msgs/MoveBaseAction'
-	});
-       
-        var sGoal = new ROSLIB.Goal({
-	     actionClient : moveBaseClient,
-	     goalMessage : {
-	     	target_pose: {
-		  header:{},
-		  pose:{}
-		}
-	     }
-	});
-
-	  // Print out their output into the terminal.
-	sGoal.on('feedback', function(feedback) {
-	    //console.log('Feedback: lat: ' + feedback.base_position.pose.position.x + " lng: " + feedback.base_position.pose.position.y);
-	});
-	sGoal.on('result', function(result) {
-	//Result empty for this action
-          
-	});
-	sGoal.on('status', function(status) {
-	  //console.log('Status is: ' + status.text);
-	  if (status.status == 3){
-	    //stop the action in someway
-	    console.log("Done at:"+movingMarker.position.lat()+","+movingMarker.position.lng()+" and yaw="+yaw_deg); 
-	    start_robil.lat = movingMarker.position.lat();
-	    start_robil.lng = movingMarker.position.lng();
-	    startMarker.setPosition(start_robil);
-	    map.panTo(start_robil);
-
-	    sGoal.isFinished= true;
-	    sGoal.result = "Success";
-	    pos_gps.unsubscribe();
-	    rot_ins.unsubscribe();
-	    sGoal.cancel();
-	    
-	  }
-	});
-	
-
-	var latLngArray = polyline.getPath();
-        var size = latLngArray.length;
-        var coords = latLngArray.getArray();
-        var coord;
-        for (i=1; i<latLngArray.length; i++){ //should be i=0 but the first is the current position
-	  coord = coords[i];
-	  console.log("Goal Lat Lng is:" + coord.toString() + "Array with:"+size+" coords");
-	  //twist.linear.x=coord.lat();
-	  //twist.linear.y=coord.lng();
-	  //cmdVel.publish(twist);
-	  //Move Starting Marker
-	  var infowindow = new google.maps.InfoWindow({
-	      content: 'Start' + ' lat:' + start_robil.lat + ' lng: '+ start_robil.lng
-	    });
-	  infowindow.open(map, startMarker);
-
-	  var goalMarker = new google.maps.Marker({
-	    position: coord,
-	    map: map,
-	    title: 'Goal',
-	    label: 'G'
-	  });
-	  
-	  var vpose = {
-		header: {
-		  seq : 0,
-		  stamp : { 
-		    secs: 140,
-		    nsecs: 342000000
-		  },
-		  frame_id: 'WORLD'
-		},
-		pose : {
-		    position : {
-		      x: 0.0,
-		      y: 0.0,
-		      z: 0.0
-		    },
-		    orientation:{
-		      x: 0.0,
-		      y: 0.0,
-		      z: 0.0,
-		      w: 1.0
-		    }
-		}
-	  };
-	  console.log("coord.lat() = " + coord.lat() +" and lng() = " + coord.lng());
-	  //var OrigLatRadians = convertDegreeToRadian(robilZero.lat);
-	  var OrigLatRadians = convertDegreeToRadian(robilZero.lat());
-	  
-	  var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng()));	  
-	  //var tmp_y_km = -earthRadiusInKMs * Math.cos(OrigLatRadians) * (convertDegreeToRadian(coord.lng()) - convertDegreeToRadian(robilZero.lng));
-	  var tmp_x_km =  earthRadiusInKMs * (convertDegreeToRadian(coord.lat()) - OrigLatRadians);
-	  
-	  //Don not invert coordinates
-	  var tmp_x=1000*tmp_x_km;
-	  var tmp_y=1000*tmp_y_km;
-
-	  console.log("Temp Goal is: x:" + tmp_x + 'm y: '+ tmp_y+'m');
-
-	  vpose.pose.position.x = tmp_x;//newxy.n_x;
-	  vpose.pose.position.y = tmp_y;//newxy.n_y;
-	  //vpose.pose.position.x = 111190*(coord.lat() - movingMarker.position.lat());
-	  //vpose.pose.position.y = 111190*(coord.lng() - movingMarker.position.lng());
-	  sGoal.goalMessage.goal.target_pose = vpose;
-	  var infoGoal = new google.maps.InfoWindow({
-	      content: 'Goal' + ' x:' + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m'
-	  });
-	  //marker.addListener('click', function() {//});
-	  infoGoal.open(map, goalMarker);
-	  console.log("Goal is: x:" + vpose.pose.position.x + 'm y: '+ vpose.pose.position.y +'m');
-        }
-        // Send the goal to the action server.
-	sGoal.send();
-       }
+   
    function curMissionState(mid) {
 	  this.ntasks = { id: mid, wp: 0 };
 	  this.mtasks = "";
@@ -618,9 +477,11 @@
    }
 	  
    function parseMissionStateFromString(inputStr, curMission) {
-	var pos = inputStr.search("ms=");
+	var pos = inputStr.search(currMissionId.toString()+"{ms=");
 	var sval = inputStr.indexOf(":",pos);
-	curMission.missionState.ms = inputStr.slice(pos+3, sval);
+	var midl = currMissionId.toString().length;
+	var addlength = midl+4;
+	curMission.missionState.ms = inputStr.slice(pos+addlength, sval);
    }
    
    function getRobilOrigin(deltaX, deltaY, actLat, actLng){
